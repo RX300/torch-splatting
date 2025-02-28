@@ -76,6 +76,8 @@ class GSSTrainer(Trainer):
 
 
 if __name__ == "__main__":
+    import os
+    os.environ["KMP_DUPLICATE_LIB_OK"]="True"
     device = 'cuda'
     folder = './B075X65R3X'
     data = read_all(folder, resize_factor=0.5)
@@ -93,7 +95,9 @@ if __name__ == "__main__":
     render_kwargs = {
         'white_bkgd': True,
     }
-
+    results_folder = 'result/test'
+    if not os.path.exists(results_folder):
+        os.makedirs(results_folder)
     trainer = GSSTrainer(model=gaussModel, 
         data=data,
         train_batch_size=1, 
@@ -102,7 +106,7 @@ if __name__ == "__main__":
         train_lr=1e-3, 
         amp=False,
         fp16=False,
-        results_folder='result/test',
+        results_folder=results_folder,
         render_kwargs=render_kwargs,
     )
 
