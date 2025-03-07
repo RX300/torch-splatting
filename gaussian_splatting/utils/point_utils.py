@@ -42,7 +42,9 @@ def get_point_clouds(cameras, depths, alphas, rgbs=None):
     coords = []
     rgbas = []
     rays_o, rays_d = get_rays_single_image(H=H, W=W, intrinsics=intrinsics, c2w=c2ws)
+    # mask是一个bool tensor，表示哪些像素点是有效的
     mask = (alphas.flatten(1) == 1)
+    # pts.shape = [B, H*W, 3]
     pts = rays_o + rays_d * depths.flatten(1).unsqueeze(-1)
     rgbas = torch.cat([rgbs, alphas.unsqueeze(-1)], dim=-1)
     coords = pts[mask].cpu().numpy()

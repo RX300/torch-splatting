@@ -225,6 +225,7 @@ class GaussRenderer(nn.Module):
 
     def forward(self, camera, pc, **kwargs):
         means3D = pc.get_xyz
+        # means3D.shape => [N_gaussians, 3]
         opacity = pc.get_opacity
         scales = pc.get_scaling
         rotations = pc.get_rotation
@@ -239,7 +240,9 @@ class GaussRenderer(nn.Module):
             mean_ndc, mean_view, in_mask = projection_ndc(means3D, 
                     viewmatrix=camera.world_view_transform, 
                     projmatrix=camera.projection_matrix)
+            # print(mean_ndc.shape, mean_view.shape, in_mask.shape)
             mean_ndc = mean_ndc[in_mask]
+            # print(mean_ndc.shape)
             mean_view = mean_view[in_mask]
             depths = mean_view[:,2]
         

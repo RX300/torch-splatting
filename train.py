@@ -83,7 +83,7 @@ if __name__ == "__main__":
     data = read_all(folder, resize_factor=0.5)
     data = {k: v.to(device) for k, v in data.items()}
     data['depth_range'] = torch.Tensor([[1,3]]*len(data['rgb'])).to(device)
-
+    print(data['depth'].shape)
 
     points = get_point_clouds(data['camera'], data['depth'], data['alpha'], data['rgb'])
     raw_points = points.random_sample(2**14)
@@ -101,7 +101,7 @@ if __name__ == "__main__":
     trainer = GSSTrainer(model=gaussModel, 
         data=data,
         train_batch_size=1, 
-        train_num_steps=25000,
+        train_num_steps=5000,
         i_image =100,
         train_lr=1e-3, 
         amp=False,
