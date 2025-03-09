@@ -63,6 +63,39 @@ def read_camera_tinynerf(folder,max_depth=1):
 
     return rgb_files, poses, intrinsics, max_depth
 
+def read_image(rgb_file, pose, intrinsic_, max_depth, resize_factor=1., white_bkgd=True):
+    #rgb.shape = (H, W, 3), depth.shape = (H, W), alpha.shape = (H, W)
+    rgb = torch.from_numpy(imageio.imread(rgb_file).astype(np.float32) / 255.0)
+    depth = torch.from_numpy(imageio.imread(rgb_file[:-7]+'depth.png').astype(np.float32) / 255.0 * max_depth)
+    alpha = torch.from_numpy(imageio.imread(rgb_file[:-7]+'alpha.png').astype(np.float32) / 255.0)
+    # rgb = torch.from_numpy(rgb_file)
+    # alpha2 = torch.ones_like(rgb[..., 0],dtype=torch.float32)
+    # depth = 1 * torch.ones_like(alpha2,dtype=torch.float32)
+
+    image_size = rgb.shape[:2]
+    intrinsic = np.eye(4,4)
+    intrinsic[:3,:3] = intrinsic_
+
+    if resize_factor != 1:
+        image_size = image_size[0] * resize_factor, image_size[1] * resize_factor 
+        intrinsic[:2,:3] *= resize_factor
+        resize_fn = lambda img, resize_factor: F.interpolate(
+                img.permute(0, 3, 1, 2), scale_factor=resize_factor, mode='bilinear',
+            ).permute(0, 2, 3, 1)
+        
+        rgb = rearrange(resize_fn(rearrange(rgb, 'h w c -> 1 h w c'), resize_factor), '1 h w c -> h w c')
+        depth = rearrange(resize_fn(rearrange(depth, 'h w -> 1 h w 1'), resize_factor), '1 h w 1 -> h w')
+        alpha = rearrange(resize_fn(rearrange(alpha, 'h w -> 1 h w 1'), resize_factor), '1 h w 1 -> h w')
+
+    camera = torch.from_numpy(np.concatenate(
+        (list(image_size), intrinsic.flatten(), pose.flatten())
+    ).astype(np.float32))
+    
+    if white_bkgd:
+        rgb = alpha[..., None] * rgb + (1-alpha)[..., None]
+
+    return rgb, depth, alpha, camera
+
 def read_all(folder, resize_factor=1.):
     """
     read source images from a folder
@@ -97,41 +130,7 @@ def read_all(folder, resize_factor=1.):
         "alpha": src_alphas,
     }
 
-
-def read_image(rgb_file, pose, intrinsic_, max_depth, resize_factor=1., white_bkgd=True):
-    #rgb.shape = (H, W, 3), depth.shape = (H, W), alpha.shape = (H, W)
-    rgb = torch.from_numpy(imageio.imread(rgb_file).astype(np.float32) / 255.0)
-    depth = torch.from_numpy(imageio.imread(rgb_file[:-7]+'depth.png').astype(np.float32) / 255.0 * max_depth)
-    alpha = torch.from_numpy(imageio.imread(rgb_file[:-7]+'alpha.png').astype(np.float32) / 255.0)
-    # rgb = torch.from_numpy(rgb_file)
-    # alpha2 = torch.ones_like(rgb[..., 0],dtype=torch.float32)
-    # depth = 1 * torch.ones_like(alpha2,dtype=torch.float32)
-
-    image_size = rgb.shape[:2]
-    intrinsic = np.eye(4,4)
-    intrinsic[:3,:3] = intrinsic_
-
-    if resize_factor != 1:
-        image_size = image_size[0] * resize_factor, image_size[1] * resize_factor 
-        intrinsic[:2,:3] *= resize_factor
-        resize_fn = lambda img, resize_factor: F.interpolate(
-                img.permute(0, 3, 1, 2), scale_factor=resize_factor, mode='bilinear',
-            ).permute(0, 2, 3, 1)
-        
-        rgb = rearrange(resize_fn(rearrange(rgb, 'h w c -> 1 h w c'), resize_factor), '1 h w c -> h w c')
-        depth = rearrange(resize_fn(rearrange(depth, 'h w -> 1 h w 1'), resize_factor), '1 h w 1 -> h w')
-        alpha = rearrange(resize_fn(rearrange(alpha, 'h w -> 1 h w 1'), resize_factor), '1 h w 1 -> h w')
-
-    camera = torch.from_numpy(np.concatenate(
-        (list(image_size), intrinsic.flatten(), pose.flatten())
-    ).astype(np.float32))
-    
-    if white_bkgd:
-        rgb = alpha[..., None] * rgb + (1-alpha2)[..., None]
-
-    return rgb, depth, alpha, camera
-
-def load_tiny_nerf_data(path, resize_factor=1.0, device='cpu'):
+def load_tiny_nerf_data(path, resize_factor=1.0, max_depth=1.0,device='cpu'):
     """
     加载 tiny_nerf_data.npz 格式的数据，并转换为与 read_all 函数相同的输出格式。
     
@@ -213,7 +212,7 @@ def load_tiny_nerf_data(path, resize_factor=1.0, device='cpu'):
     alphas_torch = torch.ones(N, H, W, device=device,dtype=torch.float32)
     
     # 创建深度通道
-    depths_torch = torch.ones_like(alphas_torch, device=device,dtype=torch.float32)
+    depths_torch = max_depth*torch.ones_like(alphas_torch, device=device,dtype=torch.float32)
     
     return {
         "rgb": rgbs_torch,  # [N, H, W, 3]

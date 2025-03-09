@@ -173,24 +173,32 @@ class GaussRenderer(nn.Module):
     def render(self, camera, means2D, cov2d, color, opacity, depths):
         radii = get_radius(cov2d)
         rect = get_rect(means2D, radii, width=camera.image_width, height=camera.image_height)
-        
+        TILE_SIZE = 64
+        self.pix_coord = torch.stack(torch.meshgrid(torch.arange(camera.image_height), torch.arange(camera.image_width), indexing='xy'), dim=-1).to('cuda')
+
         self.render_color = torch.ones(*self.pix_coord.shape[:2], 3).to('cuda')
         self.render_depth = torch.zeros(*self.pix_coord.shape[:2], 1).to('cuda')
         self.render_alpha = torch.zeros(*self.pix_coord.shape[:2], 1).to('cuda')
-
-        TILE_SIZE = 64
+        # print("self.render_color.shape", self.render_color.shape)
+        # print("camera.image_height", camera.image_height)
+        # print("camera.image_width", camera.image_width)
         for h in range(0, camera.image_height, TILE_SIZE):
             for w in range(0, camera.image_width, TILE_SIZE):
+                # 计算实际的tile尺寸(处理边缘情况)
+                actual_h_size = min(TILE_SIZE, camera.image_height - h)
+                actual_w_size = min(TILE_SIZE, camera.image_width - w)
+                # print("actual_h_size", actual_h_size)
+                # print("actual_w_size", actual_w_size)
                 # check if the rectangle penetrate the tile
                 over_tl = rect[0][..., 0].clip(min=w), rect[0][..., 1].clip(min=h)
-                over_br = rect[1][..., 0].clip(max=w+TILE_SIZE-1), rect[1][..., 1].clip(max=h+TILE_SIZE-1)
+                over_br = rect[1][..., 0].clip(max=w+actual_w_size-1), rect[1][..., 1].clip(max=h+actual_h_size-1)
                 in_mask = (over_br[0] > over_tl[0]) & (over_br[1] > over_tl[1]) # 3D gaussian in the tile 
                 
                 if not in_mask.sum() > 0:
                     continue
 
                 P = in_mask.sum()
-                tile_coord = self.pix_coord[h:h+TILE_SIZE, w:w+TILE_SIZE].flatten(0,-2)
+                tile_coord = self.pix_coord[h:h+actual_h_size, w:w+actual_w_size].flatten(0,-2)
                 sorted_depths, index = torch.sort(depths[in_mask])
                 sorted_means2D = means2D[in_mask][index]
                 sorted_cov2d = cov2d[in_mask][index] # P 2 2
@@ -210,10 +218,13 @@ class GaussRenderer(nn.Module):
                 acc_alpha = (alpha * T).sum(dim=1)
                 tile_color = (T * alpha * sorted_color[None]).sum(dim=1) + (1-acc_alpha) * (1 if self.white_bkgd else 0)
                 tile_depth = ((T * alpha) * sorted_depths[None,:,None]).sum(dim=1)
-                self.render_color[h:h+TILE_SIZE, w:w+TILE_SIZE] = tile_color.reshape(TILE_SIZE, TILE_SIZE, -1)
-                self.render_depth[h:h+TILE_SIZE, w:w+TILE_SIZE] = tile_depth.reshape(TILE_SIZE, TILE_SIZE, -1)
-                self.render_alpha[h:h+TILE_SIZE, w:w+TILE_SIZE] = acc_alpha.reshape(TILE_SIZE, TILE_SIZE, -1)
-
+                
+                # 使用实际尺寸重塑tensor
+                # print(f"h:{h}, w:{w}, actual_h_size:{actual_h_size}, actual_w_size:{actual_w_size}")
+                # print(f"tile_color.shape:{tile_color.shape}, tile_depth.shape:{tile_depth.shape}, acc_alpha.shape:{acc_alpha.shape}")
+                self.render_color[h:h+actual_h_size, w:w+actual_w_size] = tile_color.reshape(actual_h_size, actual_w_size, -1)
+                self.render_depth[h:h+actual_h_size, w:w+actual_w_size] = tile_depth.reshape(actual_h_size, actual_w_size, -1)
+                self.render_alpha[h:h+actual_h_size, w:w+actual_w_size] = acc_alpha.reshape(actual_h_size, actual_w_size, -1)
         return {
             "render": self.render_color,
             "depth": self.render_depth,

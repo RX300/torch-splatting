@@ -86,14 +86,14 @@ if __name__ == "__main__":
     os.environ["KMP_DUPLICATE_LIB_OK"]="True"
     device = 'cuda'
     folder = './tiny_nerf_data.npz'
-    data = load_tiny_nerf_data(folder, resize_factor=2.56)
+    data = load_tiny_nerf_data(folder, resize_factor=1.0,max_depth=5.0,device=device)
     data = {k: v.to(device) for k, v in data.items()}
     data['depth_range'] = torch.Tensor([[1,3]]*len(data['rgb'])).to(device)
     print(data['depth'].shape)
 
     points = get_point_clouds(data['camera'], data['depth'], data['alpha'], data['rgb'])
     print(points.coords.shape)
-    raw_points = points.random_sample(10000)
+    raw_points = points.random_sample(2**14)
     print(raw_points.coords.shape)
     # raw_points.write_ply(open('points.ply', 'wb'))
 
